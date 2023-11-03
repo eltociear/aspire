@@ -53,9 +53,11 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
         _appExecutor = appExecutor;
         _locations = locations;
 
-        if (options.DashboardEnabled)
+        // HACK: Manifest publisher check is temporary util DcpHostService is integrated with DcpPublisher.
+        if (options.DashboardEnabled && publishingOptions.Value.Publisher != "manifest")
         {
-            _dashboard = new DashboardWebApplication(serviceCollection =>
+            var dashboardLogger = _loggerFactory.CreateLogger<DashboardWebApplication>();
+            _dashboard = new DashboardWebApplication(dashboardLogger, serviceCollection =>
             {
                 serviceCollection.AddSingleton(_applicationModel);
                 serviceCollection.AddSingleton(kubernetesService);
@@ -190,7 +192,9 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
         return dcpProcessSpec;
     }
 
-    private const int WaitTimeForDockerTestCommandInSeconds = 10;
+    // Docker goes to into resource saver mode after 5 minutes of not running a container (by default).
+    // While in this mode, the commands we use for the docker check take quite some time
+    private const int WaitTimeForDockerTestCommandInSeconds = 25;
 
     private void EnsureDockerIfNecessary()
     {
@@ -261,7 +265,14 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
         string? directoryName = Path.GetDirectoryName(socketPath);
         if (!string.IsNullOrEmpty(directoryName))
         {
-            Directory.CreateDirectory(directoryName);
+            if (OperatingSystem.IsWindows())
+            {
+                Directory.CreateDirectory(directoryName);
+            }
+            else
+            {
+                Directory.CreateDirectory(directoryName, UnixFileMode.UserExecute | UnixFileMode.UserWrite | UnixFileMode.UserRead);
+            }
         }
 
         Socket socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
@@ -341,7 +352,7 @@ internal sealed class DcpHostService : IHostedLifecycleService, IAsyncDisposable
             {
                 // loggerFactory.CreateLogger internally caches, but we may as well cache the logger as well as the string
                 // for the lifetime of this socket
-                loggerCache[hashValue] = logger = _loggerFactory.CreateLogger(Encoding.UTF8.GetString(category));
+                loggerCache[hashValue] = logger = _loggerFactory.CreateLogger($"Aspire.Hosting.Dcp.{Encoding.UTF8.GetString(category)}");
             }
 
             return (logger, logLevel, Encoding.UTF8.GetString(message));

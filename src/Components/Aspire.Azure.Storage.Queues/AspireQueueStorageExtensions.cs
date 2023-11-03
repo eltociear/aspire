@@ -14,6 +14,10 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Microsoft.Extensions.Hosting;
 
+/// <summary>
+/// Provides extension methods for registering <see cref="QueueServiceClient"/> as a singleton in the services provided by the <see cref="IHostApplicationBuilder"/>.
+/// Enables retries, corresponding health check, logging and telemetry.
+/// </summary>
 public static class AspireQueueStorageExtensions
 {
     private const string DefaultConfigSectionName = "Aspire:Azure:Storage:Queues";
@@ -72,9 +76,11 @@ public static class AspireQueueStorageExtensions
                     throw new InvalidOperationException($"A QueueServiceClient could not be configured. Ensure valid connection information was provided in 'ConnectionStrings:{connectionName}' or specify a 'ConnectionString' or 'ServiceUri' in the '{configurationSectionName}' configuration section.");
                 }
 
-                return !string.IsNullOrEmpty(connectionString) ? new QueueServiceClient(connectionString, options) :
-                    cred is not null ? new QueueServiceClient(settings.ServiceUri, cred, options) :
-                    new QueueServiceClient(settings.ServiceUri, options);
+                return !string.IsNullOrEmpty(connectionString)
+                    ? new QueueServiceClient(connectionString, options)
+                    : cred is not null
+                        ? new QueueServiceClient(settings.ServiceUri, cred, options)
+                        : new QueueServiceClient(settings.ServiceUri, options);
             }, requiresCredential: false);
         }
 
